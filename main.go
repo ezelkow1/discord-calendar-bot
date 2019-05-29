@@ -110,7 +110,7 @@ func main() {
 
 func createTimer(thisevent Event, s *discordgo.Session) {
 	go func() {
-		timer := time.NewTimer(time.Until(thisevent.Date))
+		timer := time.NewTimer(thisevent.Date.Sub(time.Now()))
 		<-timer.C
 		SendEmbed(s, config.BroadcastChannel, "", "Event Starting", "Event for "+thisevent.Name+" is starting now")
 		timer.Stop()
