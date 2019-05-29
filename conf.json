@@ -1,0 +1,5 @@
+{
+	"Token": "Your Bot token value",
+	"BroadcastChannel": "The broadcast channel to use for events (the id avlue)",
+	"DbFile": "name of db file to store events"
+}
