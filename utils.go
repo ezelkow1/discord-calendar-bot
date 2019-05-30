@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 //CleanKey cleans up the input name. Strips trailing key from input
@@ -61,9 +63,62 @@ func checkPrefix(msg string) bool {
 		(strings.HasPrefix(msg, "!list") == true) ||
 		(strings.HasPrefix(msg, "!delete ") == true) ||
 		(strings.HasPrefix(msg, "!time") == true) ||
-		(strings.HasPrefix(msg, "!help") == true){
+		(strings.HasPrefix(msg, "!help") == true) {
 		return true
 	}
 
 	return false
+}
+
+// This function returns roleID from name
+func findRolesID(s *discordgo.Session, myrole string) string {
+
+	roles, err := s.GuildRoles(guildID)
+
+	if err == nil {
+		for roleids := range roles {
+			if NormalizeString(roles[roleids].Name) == NormalizeString(myrole) {
+				return roles[roleids].ID
+			}
+		}
+	}
+
+	return ""
+}
+
+// This function returns role name from ID
+func findRolesName(s *discordgo.Session, myID string) string {
+	roles, err := s.GuildRoles(guildID)
+
+	if err == nil {
+		for roleids := range roles {
+			if roles[roleids].ID == myID {
+				return roles[roleids].Name
+			}
+		}
+	}
+
+	return ""
+}
+
+// Returns mention string for given name of role
+func findRolesMention(s *discordgo.Session, myRole string) string {
+	roles, err := s.GuildRoles(guildID)
+
+	if err == nil {
+		for roleids := range roles {
+			if NormalizeString(roles[roleids].Name) == NormalizeString(myRole) {
+				return roles[roleids].Mention()
+			}
+		}
+	}
+
+	return ""
+}
+
+// NormalizeString lowercases and strips spaces
+func NormalizeString(name string) string {
+	tmp := strings.ToLower(name)
+	tmp = strings.Replace(tmp, " ", "", -1)
+	return tmp
 }
