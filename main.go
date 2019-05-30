@@ -26,6 +26,7 @@ type Configuration struct {
 type Event struct {
 	Name string
 	Date time.Time
+	role string
 }
 
 // Variables used for command line parameters or global
@@ -84,7 +85,6 @@ func main() {
 		fmt.Println("Db File does not exist, creating")
 		newFile, _ := os.Create(config.DbFile)
 		newFile.Close()
-
 	}
 
 	fileLock.Lock()
@@ -112,7 +112,13 @@ func createTimer(thisevent Event, s *discordgo.Session) {
 	go func() {
 		timer := time.NewTimer(thisevent.Date.Sub(time.Now()))
 		<-timer.C
+
 		SendEmbed(s, config.BroadcastChannel, "", "Event Starting", "Event for "+thisevent.Name+" is starting now")
+		mention := findRolesMention(s, thisevent.role)
+
+		if mention != "" {
+			s.ChannelMessageSend(config.BroadcastChannel, mention)
+		}
 		timer.Stop()
 		deleteOneEvent(thisevent.Name)
 	}()
@@ -146,6 +152,7 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 		s.UpdateStatus(0, "")
 		//SendEmbed(s, config.BroadcastChannel, "", "I iz here", "Keybot has arrived. You may now use me like the dumpster I am")
 		initialized = true
+		guildID = event.Guilds[0].ID
 		initEvents(s)
 	}
 }
@@ -204,8 +211,8 @@ func printHelp(s *discordgo.Session, m *discordgo.MessageCreate) {
 	buffer.WriteString("!add Event Name Date Time (in EDT) - i.e. Bean Battles 05/29/2019 17:00 - this will add a new event\n")
 	buffer.WriteString("!list - Lists current events scheduled and their times\n")
 	buffer.WriteString("!delete Event Name - Removes an event with the Event Name\n")
-	buffer.WriteString("!time - prints the current date and time in EDT")
-	buffer.WriteString("!help - you're looking at it")
+	buffer.WriteString("!time - prints the current date and time in EDT\n")
+	buffer.WriteString("!help - you're looking at it\n")
 	SendEmbed(s, m.ChannelID, "", "Available Commands", buffer.String())
 }
 
@@ -220,11 +227,20 @@ func printTime(s *discordgo.Session, m *discordgo.MessageCreate) {
 func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	//layout      = "01/02/2006 15:04"
 	thisevent := strings.Split(m.Content, " ")
+
+	var thisrole string
+	if thisevent[len(thisevent)-1][0] == '<' {
+		thisrole = thisevent[len(thisevent)-1][3:]
+		thisrole = thisrole[:len(thisrole)-1]
+		thisrole = findRolesName(s, thisrole)
+		thisevent = thisevent[0 : len(thisevent)-1]
+	}
+
 	timeval := strings.Join(thisevent[len(thisevent)-2:], " ")
 	eventname := strings.Join(thisevent[1:len(thisevent)-2], " ")
 	var this Event
 	this.Name = eventname
-
+	this.role = thisrole
 	if this.Name == "" {
 		SendEmbed(s, m.ChannelID, "", "Missing Name", "Your event needs a name")
 		return
@@ -253,7 +269,13 @@ func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	x = append(x, this)
 	Save(config.DbFile, &x)
 	fileLock.Unlock()
+
+	mention := findRolesMention(s, this.role)
 	SendEmbed(s, m.ChannelID, "", "Event Created", "Created Event: "+this.Name+" at "+this.Date.Format(time.RFC1123))
+
+	if mention != "" {
+		s.ChannelMessageSend(config.BroadcastChannel, mention)
+	}
 	createTimer(this, s)
 }
 
