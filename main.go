@@ -24,9 +24,9 @@ type Configuration struct {
 
 // Event for calendar
 type Event struct {
-	Name string
-	Date time.Time
-	role string
+	Name     string
+	Date     time.Time
+	notifies []string
 }
 
 // Variables used for command line parameters or global
@@ -114,10 +114,17 @@ func createTimer(thisevent Event, s *discordgo.Session) {
 		<-timer.C
 
 		SendEmbed(s, config.BroadcastChannel, "", "Event Starting", "Event for "+thisevent.Name+" is starting now")
-		mention := findRolesMention(s, thisevent.role)
+		Load(config.DbFile, &x)
+		for index := range x {
+			if thisevent.Name == x[index].Name {
+				thisevent = x[index]
+			}
+		}
 
-		if mention != "" {
-			s.ChannelMessageSend(config.BroadcastChannel, mention)
+		for _, mentions := range thisevent.notifies {
+			if mentions != "" {
+				s.ChannelMessageSend(config.BroadcastChannel, mentions)
+			}
 		}
 		timer.Stop()
 		deleteOneEvent(thisevent.Name)
@@ -204,11 +211,16 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.HasPrefix(m.Content, "!help") == true {
 		printHelp(s, m)
 	}
+
+	if strings.HasPrefix(m.Content, "!notify") == true {
+		addNotify(s, m)
+	}
 }
 
 func printHelp(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var buffer bytes.Buffer
-	buffer.WriteString("!add Event Name Date Time (in EDT) - i.e. Bean Battles 05/29/2019 17:00 (optional @role)- this will add a new event. If role is added it will be mentioned on creation and on event launch\n")
+	buffer.WriteString("!add Event Name Date Time (in EDT) - i.e. Bean Battles 05/29/2019 17:00 (optional @role)- this will add a new event\n")
+	buffer.WriteString("!notify Event Name @member @role ...... etc - Adds the members and roles to a list of notifications for the event")
 	buffer.WriteString("!list - Lists current events scheduled and their times\n")
 	buffer.WriteString("!delete Event Name - Removes an event with the Event Name\n")
 	buffer.WriteString("!time - prints the current date and time in EDT\n")
@@ -224,23 +236,41 @@ func printTime(s *discordgo.Session, m *discordgo.MessageCreate) {
 	SendEmbed(s, m.ChannelID, "", "Current Time (EDT)", "The current time is: "+time.Now().In(newYork).Format(output)+" EDT")
 }
 
+func addNotify(s *discordgo.Session, m *discordgo.MessageCreate) {
+	msg := strings.TrimPrefix(m.Content, "!notify ")
+	name := ""
+	Load(config.DbFile, &x)
+	for index := range x {
+		if strings.Contains(msg, x[index].Name) {
+			msg = strings.TrimPrefix(msg, x[index].Name)
+			name = x[index].Name
+			mentions := strings.Split(msg, " ")
+			for _, names := range mentions {
+				if names != "" {
+					x[index].notifies = append(x[index].notifies, names)
+				}
+			}
+		}
+	}
+
+	if name != "" {
+		Save(config.DbFile, &x)
+		SendEmbed(s, m.ChannelID, "", "Added Notifications", "Added the mentions to the list for "+name)
+	} else {
+		SendEmbed(s, m.ChannelID, "", "No Event with that Name", "No event with that name found")
+	}
+
+}
+
 func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	//layout      = "01/02/2006 15:04"
 	thisevent := strings.Split(m.Content, " ")
-
-	var thisrole string
-	if thisevent[len(thisevent)-1][0] == '<' {
-		thisrole = thisevent[len(thisevent)-1][3:]
-		thisrole = thisrole[:len(thisrole)-1]
-		thisrole = findRolesName(s, thisrole)
-		thisevent = thisevent[0 : len(thisevent)-1]
-	}
 
 	timeval := strings.Join(thisevent[len(thisevent)-2:], " ")
 	eventname := strings.Join(thisevent[1:len(thisevent)-2], " ")
 	var this Event
 	this.Name = eventname
-	this.role = thisrole
+
 	if this.Name == "" {
 		SendEmbed(s, m.ChannelID, "", "Missing Name", "Your event needs a name")
 		return
@@ -263,6 +293,7 @@ func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 		SendEmbed(s, m.ChannelID, "", "Too early", "Silly, dont make an event before right now")
 		return
 	}
+	this.notifies = append(this.notifies, m.Author.Mention())
 
 	fileLock.Lock()
 	Load(config.DbFile, &x)
@@ -270,12 +301,8 @@ func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	Save(config.DbFile, &x)
 	fileLock.Unlock()
 
-	mention := findRolesMention(s, this.role)
 	SendEmbed(s, m.ChannelID, "", "Event Created", "Created Event: "+this.Name+" at "+this.Date.Format(time.RFC1123))
-
-	if mention != "" {
-		s.ChannelMessageSend(config.BroadcastChannel, mention)
-	}
+	s.ChannelMessageSend(config.BroadcastChannel, this.notifies[0])
 	createTimer(this, s)
 }
 

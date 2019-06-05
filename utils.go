@@ -63,7 +63,8 @@ func checkPrefix(msg string) bool {
 		(strings.HasPrefix(msg, "!list") == true) ||
 		(strings.HasPrefix(msg, "!delete ") == true) ||
 		(strings.HasPrefix(msg, "!time") == true) ||
-		(strings.HasPrefix(msg, "!help") == true) {
+		(strings.HasPrefix(msg, "!help") == true) ||
+		(strings.HasPrefix(msg, "!notify") == true) {
 		return true
 	}
 
