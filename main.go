@@ -220,7 +220,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 func printHelp(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var buffer bytes.Buffer
 	buffer.WriteString("!add Event Name Date Time (in EDT) - i.e. Bean Battles 05/29/2019 17:00\n")
-	buffer.WriteString("!notify Event Name @member @role ...... etc - Adds the members and roles to a list of notifications for the event")
+	buffer.WriteString("!notify Event Name @member @role ...... etc - Adds the members and roles to a list of notifications for the event\n")
 	buffer.WriteString("!list - Lists current events scheduled and their times\n")
 	buffer.WriteString("!delete Event Name - Removes an event with the Event Name\n")
 	buffer.WriteString("!time - prints the current date and time in EDT\n")
