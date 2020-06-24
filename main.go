@@ -41,6 +41,7 @@ var (
 	x           []Event
 	layout      = "1/2/2006 15:04"
 	output      = "Mon Jan 2 15:04"
+	eventMap    = make(map[string]*time.Timer)
 )
 
 func init() {
@@ -111,6 +112,8 @@ func main() {
 func createTimer(thisevent Event, s *discordgo.Session) {
 	go func() {
 		timer := time.NewTimer(thisevent.Date.Sub(time.Now()))
+		eventMap[thisevent.Name] = timer
+
 		<-timer.C
 
 		SendEmbed(s, config.BroadcastChannel, "", "Event Starting", "Event for "+thisevent.Name+" is starting now")
@@ -129,6 +132,7 @@ func createTimer(thisevent Event, s *discordgo.Session) {
 		timer.Stop()
 		deleteOneEvent(thisevent.Name)
 	}()
+
 }
 
 func initEvents(s *discordgo.Session) {
@@ -157,7 +161,6 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 	if initialized == false {
 		// Set the playing status.
 		s.UpdateStatus(0, "")
-		//SendEmbed(s, config.BroadcastChannel, "", "I iz here", "Keybot has arrived. You may now use me like the dumpster I am")
 		initialized = true
 		guildID = event.Guilds[0].ID
 		initEvents(s)
@@ -336,6 +339,11 @@ func deleteOneEvent(name string) bool {
 	for i, event := range x {
 		hasstring := strings.Compare(name, event.Name)
 		if hasstring == 0 {
+			timer, ok := eventMap[name]
+			if ok {
+				timer.Stop()
+				delete(eventMap, name)
+			}
 			x = append(x[0:i], x[i+1:]...)
 			Save(config.DbFile, &x)
 			return true
