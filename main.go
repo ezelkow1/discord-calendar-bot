@@ -26,7 +26,7 @@ type Configuration struct {
 type Event struct {
 	Name     string
 	Date     time.Time
-	notifies []string
+	Notifies []string
 }
 
 // Variables used for command line parameters or global
@@ -124,7 +124,7 @@ func createTimer(thisevent Event, s *discordgo.Session) {
 			}
 		}
 
-		for _, mentions := range thisevent.notifies {
+		for _, mentions := range thisevent.Notifies {
 			if mentions != "" {
 				s.ChannelMessageSend(config.BroadcastChannel, mentions)
 			}
@@ -250,7 +250,7 @@ func addNotify(s *discordgo.Session, m *discordgo.MessageCreate) {
 			mentions := strings.Split(msg, " ")
 			for _, names := range mentions {
 				if names != "" {
-					x[index].notifies = append(x[index].notifies, names)
+					x[index].Notifies = append(x[index].Notifies, names)
 				}
 			}
 		}
@@ -296,7 +296,7 @@ func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 		SendEmbed(s, m.ChannelID, "", "Too early", "Silly, dont make an event before right now")
 		return
 	}
-	this.notifies = append(this.notifies, m.Author.Mention())
+	this.Notifies = append(this.Notifies, m.Author.Mention())
 
 	fileLock.Lock()
 	Load(config.DbFile, &x)
@@ -305,7 +305,7 @@ func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	fileLock.Unlock()
 
 	SendEmbed(s, m.ChannelID, "", "Event Created", "Created Event: "+this.Name+" at "+this.Date.Format(time.RFC1123))
-	s.ChannelMessageSend(config.BroadcastChannel, this.notifies[0])
+	s.ChannelMessageSend(config.BroadcastChannel, this.Notifies[0])
 	createTimer(this, s)
 }
 
