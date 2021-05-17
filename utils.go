@@ -29,16 +29,15 @@ func Save(path string, object interface{}) {
 	if err != nil {
 		fmt.Println("error on marshall")
 	}
-	fileh, err := os.Create(path)
-	n, err := fileh.Write(b)
+	fileh, _ := os.Create(path)
+	n, _ := fileh.Write(b)
 	b = b[:n]
 	fileh.Close()
-	return
 }
 
 // Load json file
 func Load(path string, object interface{}) {
-	fileh, err := os.Open(path)
+	fileh, _ := os.Open(path)
 	fileinfo, err := fileh.Stat()
 	_ = err
 	b := make([]byte, fileinfo.Size())
@@ -50,7 +49,6 @@ func Load(path string, object interface{}) {
 	b = b[:n]
 	json.Unmarshal(b, &object)
 	fileh.Close()
-	return
 }
 
 // Check if a msg has a prefix we care about. This is for
@@ -59,12 +57,12 @@ func Load(path string, object interface{}) {
 func checkPrefix(msg string) bool {
 
 	if (msg == "!listkeys") ||
-		(strings.HasPrefix(msg, "!add ") == true) ||
-		(strings.HasPrefix(msg, "!list") == true) ||
-		(strings.HasPrefix(msg, "!delete ") == true) ||
-		(strings.HasPrefix(msg, "!time") == true) ||
-		(strings.HasPrefix(msg, "!help") == true) ||
-		(strings.HasPrefix(msg, "!notify") == true) {
+		(strings.HasPrefix(msg, "!add ")) ||
+		(strings.HasPrefix(msg, "!list")) ||
+		(strings.HasPrefix(msg, "!delete ")) ||
+		(strings.HasPrefix(msg, "!time")) ||
+		(strings.HasPrefix(msg, "!help")) ||
+		(strings.HasPrefix(msg, "!notify")) {
 		return true
 	}
 

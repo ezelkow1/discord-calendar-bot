@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -42,6 +44,231 @@ var (
 	layout      = "1/2/2006 15:04"
 	output      = "Mon Jan 2 15:04"
 	eventMap    = make(map[string]*time.Timer)
+)
+
+var (
+	commands = []*discordgo.ApplicationCommand{
+		{
+			Name:        "help",
+			Description: "Print Help",
+		},
+		{
+			Name:        "time",
+			Description: "Print current time in Eastern USA",
+		},
+		{
+			Name:        "list",
+			Description: "Lists the upcoming events",
+		},
+		{
+			Name:        "notify",
+			Description: "Add a user or role to the list of mentions for an event",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "event-name",
+					Description: "Name of the event to add the notification",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "role",
+					Description: "Mentionable to notify",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "delete",
+			Description: "Delete an event",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "event-name",
+					Description: "Name of the Event to delete",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "add-event",
+			Description: "Add an event to the calendar",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "event-name",
+					Description: "Name of the Event",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "month",
+					Description: "Month",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "day",
+					Description: "day",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "year",
+					Description: "year",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "hour",
+					Description: "hour",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "minute",
+					Description: "minute",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionRole,
+					Name:        "role",
+					Description: "Optional Group Role",
+					Required:    false,
+				},
+			},
+		},
+	}
+
+	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"help": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionApplicationCommandResponseData{
+					Content: "!add Event Name Date Time (in EDT) - i.e. Bean Battles 05/29/2019 17:00\n" +
+						"!notify Event Name @member @role ...... etc - Adds the members and roles to a list of notifications for the event\n" +
+						"!list - Lists current events scheduled and their times\n" +
+						"!delete Event Name - Removes an event with the Event Name\n" +
+						"!time - prints the current date and time in EDT\n" +
+						"!help - you're looking at it\n",
+				},
+			})
+		},
+		"time": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			newYork, _ := time.LoadLocation("America/New_York")
+			//SendEmbed(s, m.ChannelID, "", "Current Time (EDT)", "The current time is: "+time.Now().In(newYork).Format(output)+" EDT")
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionApplicationCommandResponseData{
+					Content: "Current time is: " + time.Now().In(newYork).Format(output) + " in Eastern USA",
+				},
+			})
+		},
+
+		"list": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			var buffer bytes.Buffer
+
+			Load(config.DbFile, &x)
+			if len(x) == 0 {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionApplicationCommandResponseData{
+						Content: "No Upcoming Events",
+					},
+				})
+			} else {
+				for _, events := range x {
+					buffer.WriteString(events.Name + " at " + events.Date.Format(output) + " Eastern USA\n")
+				}
+
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionApplicationCommandResponseData{
+						Content: "Upcoming Events: \n" + buffer.String(),
+					},
+				})
+			}
+		},
+
+		"delete": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			Load(config.DbFile, &x)
+			output := ""
+			if deleteOneEvent(i.Data.Options[0].StringValue()) {
+				output = "Successfully deleted " + i.Data.Options[0].StringValue()
+			} else {
+				output = "Event " + i.Data.Options[0].StringValue() + " not found"
+			}
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionApplicationCommandResponseData{
+					Content: output,
+				},
+			})
+		},
+
+		"notify": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			Load(config.DbFile, &x)
+			event := i.Data.Options[0].StringValue()
+			mention := i.Data.Options[1].StringValue()
+			for index := range x {
+				if event == x[index].Name {
+					x[index].Notifies = append(x[index].Notifies, mention)
+				}
+			}
+			Save(config.DbFile, &x)
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionApplicationCommandResponseData{
+					Content: "Added " + mention + " to notifications for " + event,
+				},
+			})
+		},
+
+		"add-event": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+
+			val := ""
+
+			if (i.Data.Options[1].IntValue() < 1) || (i.Data.Options[1].IntValue() > 12) {
+				val = "Error in entered Month value"
+			}
+			if (i.Data.Options[2].IntValue() < 1) || (i.Data.Options[1].IntValue() > 31) {
+				val = "Error in entered Day value"
+			}
+			t := time.Now()
+			if int(i.Data.Options[3].IntValue()) < t.Year() {
+				val = "Error in entered Year"
+			}
+			if (i.Data.Options[4].IntValue() < 0) || (i.Data.Options[4].IntValue() > 23) {
+				val = "Error in entered Hour " + strconv.Itoa(int(i.Data.Options[4].IntValue()))
+			}
+			if (i.Data.Options[5].IntValue() < 0) || (i.Data.Options[5].IntValue() > 59) {
+				val = "Error in entered Minute"
+			}
+			//layout      = "1/2/2006 15:04"
+			if val == "" {
+				timeString := fmt.Sprintf("%d/%d/%d %d:%d",
+					i.Data.Options[1].IntValue(),
+					i.Data.Options[2].IntValue(),
+					i.Data.Options[3].IntValue(),
+					i.Data.Options[4].IntValue(),
+					i.Data.Options[5].IntValue())
+
+				roleString := ""
+				if len(i.Data.Options) >= 7 {
+					roleString = i.Data.Options[6].RoleValue(nil, "").Mention()
+				}
+				val = addEventFromData(s, i, i.Data.Options[0].StringValue(), timeString, roleString)
+			}
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionApplicationCommandResponseData{
+					Content: val,
+				},
+			})
+		},
+	}
 )
 
 func init() {
@@ -82,6 +309,12 @@ func main() {
 	// Register messageCreate as a callback for message events
 	dg.AddHandler(messageCreate)
 
+	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := commandHandlers[i.Data.Name]; ok {
+			h(s, i)
+		}
+	})
+
 	if _, err := os.Stat(config.DbFile); os.IsNotExist(err) {
 		fmt.Println("Db File does not exist, creating")
 		newFile, _ := os.Create(config.DbFile)
@@ -93,10 +326,16 @@ func main() {
 	checkEvents()
 	fileLock.Unlock()
 	// Open a websocket connection to Discord and begin listening.
+	dg.Identify.Intents = discordgo.IntentsAllWithoutPrivileged
 	err = dg.Open()
 	if err != nil {
 		fmt.Println("error opening connection,", err)
 		return
+	}
+
+	_, err = dg.ApplicationCommandBulkOverwrite(dg.State.User.ID, dg.State.Guilds[0].ID, commands)
+	if err != nil {
+		log.Panicf("Error creating commands %v", err)
 	}
 
 	// Wait here until CTRL-C or other term signal is received.
@@ -158,9 +397,9 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 
 	// Discord just loves to send ready events during server hiccups
 	// This prevents spamming
-	if initialized == false {
+	if !initialized {
 		// Set the playing status.
-		s.UpdateStatus(0, "")
+		s.UpdateGameStatus(0, "")
 		initialized = true
 		guildID = event.Guilds[0].ID
 		initEvents(s)
@@ -190,32 +429,32 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// Skip any messages we dont care about
-	if checkPrefix(m.Content) == false {
+	if !checkPrefix(m.Content) {
 		return
 	}
 
 	// Add a new key to the db
-	if strings.HasPrefix(m.Content, "!add ") == true {
+	if strings.HasPrefix(m.Content, "!add ") {
 		addEvent(s, m)
 	}
 
-	if strings.HasPrefix(m.Content, "!list") == true {
+	if strings.HasPrefix(m.Content, "!list") {
 		listEvents(s, m)
 	}
 
-	if strings.HasPrefix(m.Content, "!delete ") == true {
+	if strings.HasPrefix(m.Content, "!delete ") {
 		deleteEvent(s, m)
 	}
 
-	if strings.HasPrefix(m.Content, "!time") == true {
+	if strings.HasPrefix(m.Content, "!time") {
 		printTime(s, m)
 	}
 
-	if strings.HasPrefix(m.Content, "!help") == true {
+	if strings.HasPrefix(m.Content, "!help") {
 		printHelp(s, m)
 	}
 
-	if strings.HasPrefix(m.Content, "!notify") == true {
+	if strings.HasPrefix(m.Content, "!notify") {
 		addNotify(s, m)
 	}
 }
@@ -241,10 +480,11 @@ func printTime(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func addNotify(s *discordgo.Session, m *discordgo.MessageCreate) {
 	msg := strings.TrimPrefix(m.Content, "!notify ")
-	name := ""
+	name := strings.Trim(msg, " ")
 	Load(config.DbFile, &x)
 	for index := range x {
-		if strings.Contains(msg, x[index].Name) {
+		if name == x[index].Name {
+			//if strings.(msg, x[index].Name) {
 			msg = strings.TrimPrefix(msg, x[index].Name)
 			name = x[index].Name
 			mentions := strings.Split(msg, " ")
@@ -263,6 +503,38 @@ func addNotify(s *discordgo.Session, m *discordgo.MessageCreate) {
 		SendEmbed(s, m.ChannelID, "", "No Event with that Name", "No event with that name found")
 	}
 
+}
+
+func addEventFromData(s *discordgo.Session, i *discordgo.InteractionCreate, name string, timeVal string, roleVal string) string {
+	var this Event
+	var mentionString string
+
+	newYork, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return "Error loading timezone"
+	}
+	this.Name = name
+	this.Date, _ = time.ParseInLocation(layout, timeVal, newYork)
+
+	if i.Member != nil {
+		mentionString = i.Member.Mention()
+	} else {
+		mentionString = i.User.Mention()
+	}
+
+	this.Notifies = append(this.Notifies, mentionString)
+
+	if roleVal != "" {
+		this.Notifies = append(this.Notifies, roleVal)
+	}
+
+	fileLock.Lock()
+	Load(config.DbFile, &x)
+	x = append(x, this)
+	Save(config.DbFile, &x)
+	fileLock.Unlock()
+	createTimer(this, s)
+	return "Successfully created event for " + name
 }
 
 func addEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -332,7 +604,6 @@ func deleteEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	} else {
 		SendEmbed(s, m.ChannelID, "", "Event not found", "No Event with the name "+m.Content+" was found")
 	}
-	return
 }
 
 func deleteOneEvent(name string) bool {
