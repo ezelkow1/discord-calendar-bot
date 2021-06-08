@@ -248,7 +248,7 @@ var (
 			}
 			//layout      = "1/2/2006 15:04"
 			if val == "" {
-				timeString := fmt.Sprintf("%d/%d/%d %d:%d",
+				timeString := fmt.Sprintf("%.2d/%.2d/%d %.2d:%.2d",
 					i.Data.Options[1].IntValue(),
 					i.Data.Options[2].IntValue(),
 					i.Data.Options[3].IntValue(),
